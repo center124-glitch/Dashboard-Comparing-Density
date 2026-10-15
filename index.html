@@ -1,16 +1,19 @@
 <!DOCTYPE html>
-<!-- SBK Traffic Analytics · Gate Intensity Dashboard v50
+<!-- SBK Traffic Analytics · Gate Intensity Dashboard v52
      v44: Responsive เต็มรูปแบบ + แก้ความแม่นยำ parser/วันที่/การเทียบ %
      v45: ซิงก์ไฟล์ Excel อัตโนมัติจากโฟลเดอร์ Google Drive (ผ่าน Apps Script Bridge)
      v46: ฝังที่อยู่ Web App + รหัสลับมากับโปรแกรม → เปิดแล้วซิงก์เองทันที ไม่ต้องตั้งค่า
      v47: รองรับไฟล์ Google Sheets (แปลงเป็น Excel ฝั่ง Apps Script) + เครื่องมือตรวจสอบโฟลเดอร์
      v48: รายงานระดับเอกสารทางการ (เลขที่เอกสาร · เลขหน้า · ช่องลงนาม) + แก้ประเด็นจากการตรวจทาน
      v49: คืนไอคอนแอปเดิม · ระบบกลับหน้าแรกอัตโนมัติ (5 นาที + เตือนล่วงหน้า) · ปรับ UI/Responsive
-     v50: จัดแถบหัวแดชบอร์ดใหม่ — เอาโลโก้ที่เบียดหัวเรื่องออก ย่อความสูง ไม่ให้ข้อความล้นกรอบ 
+     v50: จัดแถบหัวแดชบอร์ดใหม่ — เอาโลโก้ที่เบียดหัวเรื่องออก ย่อความสูง ไม่ให้ข้อความล้นกรอบ
+     v51: ย่อแผงควบคุมหน้ารายประตูให้กระชับ (217 → ~150px) ไม่ให้เด่นกว่าการ์ดสรุปยอด 
+     v52: หน้าโลโก้เข้าแดชบอร์ดอัตโนมัติ (ค่าเริ่มต้น 3 วินาที) แทนการกดปุ่ม · ปรับสี/อนิเมชันหน้าโลโก้ใหม่ทั้งหมด
      ★ จุดตั้งค่าที่แก้บ่อย (ค้นคำในไฟล์นี้)
        DEFAULT_URL   = ที่อยู่ Web App ของ Apps Script
        DEFAULT_TOKEN = รหัสลับ ต้องตรงกับค่า TOKEN ใน Code.gs
        IDLE_MS       = เวลาก่อนกลับหน้าแรกอัตโนมัติ (ค่าเริ่มต้น 5 นาที)
+       SPLASH_MS     = เวลาแสดงโลโก้ก่อนเข้าแดชบอร์ดเอง (ค่าเริ่มต้น 3000 = 3 วินาที, ช่วงที่ใช้ได้ 2000–4000)
        const ORG     = ชื่อหน่วยงานบนหัวรายงาน
 -->
 <html lang="th" data-theme="light">
@@ -517,20 +520,30 @@
 <body class="min-h-screen">
 
 <!-- หน้าโลโก้: แสดงก่อนเข้าโปรแกรมเสมอ และกลับมาเมื่อไม่ใช้งานครบเวลา -->
-<div id="splash" role="button" tabindex="0" aria-label="แตะเพื่อเข้าใช้งาน">
+<div id="splash" role="status" aria-live="polite" aria-label="กำลังเข้าสู่ระบบ — แตะเพื่อข้าม">
   <div class="sp-glow" aria-hidden="true"></div>
+  <div class="sp-aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+  <div class="sp-particles" id="spParticles" aria-hidden="true"></div>
   <div class="sp-stage">
-    <img class="sp-icon" id="splashIcon" alt="SBK Traffic Analytics">
+    <div class="sp-emblem">
+      <span class="sp-ring r1" aria-hidden="true"></span>
+      <span class="sp-ring r2" aria-hidden="true"></span>
+      <img class="sp-icon" id="splashIcon" alt="SBK Traffic Analytics">
+    </div>
     <div class="sp-title">SBK Traffic Analytics</div>
     <div class="sp-sub">แดชบอร์ดเปรียบเทียบยอดลูกค้าและยอดรถยนต์ เข้า–ออกศูนย์การค้า</div>
-    <div class="sp-btn">แตะเพื่อเข้าใช้งาน</div>
-    <div class="sp-hint" id="spHint">ระบบจะกลับสู่หน้านี้อัตโนมัติเมื่อไม่มีการใช้งาน 5 นาที</div>
+    <div class="sp-load" aria-hidden="true">
+      <div class="sp-bar"><i></i></div>
+      <div class="sp-status" id="spStatus">กำลังเตรียมแดชบอร์ด…</div>
+    </div>
+    <div class="sp-hint" id="spHint">แตะที่ใดก็ได้เพื่อข้าม · ระบบกลับสู่หน้านี้อัตโนมัติเมื่อไม่มีการใช้งาน 5 นาที</div>
     <div class="sp-org">
       <span class="sp-org-l">โดย</span>
       <div class="brand-img brand-img-dark sp-wordmark" role="img" aria-label="SEACON BANGKAE"></div>
     </div>
   </div>
 </div>
+
 <div id="fatal" class="hidden" style="position:fixed;top:0;left:0;right:0;z-index:60;background:#b91c1c;color:#fff;padding:10px 16px;font-size:13px;text-align:center"></div>
 
 <!-- ===================== FIXED SIDEBAR (เมนูซ้าย) =====================
@@ -721,16 +734,14 @@
 <main id="panel-gate" class="max-w-7xl mx-auto px-5 sm:px-8 relative z-10 pb-16 space-y-6 pt-5">
 
   <!-- ===================== CONTROL PANEL ===================== -->
-  <section class="card p-5 sm:p-6 rise" style="animation-delay:.05s;position:relative;z-index:30">
-    <!-- แถวคอนโทรลหลัก — สไตล์เดียวกับหน้า "ยอดลูกค้า/ยอดรถยนต์" -->
-    <div class="flex flex-wrap items-end gap-x-5 sm:gap-x-8 gap-y-4">
-      <div class="flex items-center gap-3">
-        <span style="font-size:1.8rem">🚪</span>
-        <div><div class="text-xs font-semibold" style="color:var(--text-faint)">กำลังดู</div>
-        <div class="text-lg font-bold font-display" style="color:var(--text)">แยกยอดลูกค้ารายประตู</div></div>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-soft)">รูปแบบการเปรียบเทียบ</label>
+  <section class="card ctl-panel rise" style="animation-delay:.05s;position:relative;z-index:30">
+    <!-- แถวคอนโทรลหลัก
+         v51: ตัดบล็อก "🚪 กำลังดู / แยกยอดลูกค้ารายประตู" ออก
+         เหตุผล: ข้อมูลซ้ำ 2 ที่อยู่แล้ว (เมนูซ้ายไฮไลต์หน้าที่เปิดอยู่ + หัวการ์ดรายงานด้านล่าง)
+         และกินความกว้างราว 260px ทำให้ตัวเลือกช่วงเวลาถูกบีบจนต้องขึ้นบรรทัดใหม่ -->
+    <div class="ctl-row">
+      <div class="ctl-seg">
+        <label class="ctl-lb">รูปแบบการเปรียบเทียบ</label>
         <div class="seg" id="granSeg" style="flex-wrap:wrap">
           <button data-v="day">รายวัน</button>
           <button data-v="week">รายสัปดาห์</button>
@@ -739,34 +750,44 @@
           <button data-v="custom">กำหนดช่วงเอง</button>
         </div>
       </div>
-      <div class="min-w-[190px] flex-1">
-        <label class="flex items-center gap-1.5 text-xs font-semibold mb-1.5" style="color:#6366f1">
-          <span style="width:9px;height:9px;border-radius:999px;background:#6366f1;display:inline-block"></span> ช่วงหลัก (Primary)
+      <div class="ctl-pick">
+        <label class="ctl-lb ctl-lb-dot" style="color:#6366f1">
+          <span style="background:#6366f1"></span>ช่วงหลัก (Primary)
         </label>
-        <div id="pickP" class="space-y-2"></div>
+        <div id="pickP" class="space-y-1.5"></div>
       </div>
-      <div class="min-w-[190px] flex-1">
-        <label class="flex items-center gap-1.5 text-xs font-semibold mb-1.5" style="color:#d97706">
-          <span style="width:9px;height:9px;border-radius:999px;background:#f59e0b;display:inline-block"></span> ช่วงเปรียบเทียบ (Compare)
+      <div class="ctl-pick">
+        <label class="ctl-lb ctl-lb-dot" style="color:#d97706">
+          <span style="background:#f59e0b"></span>ช่วงเปรียบเทียบ (Compare)
         </label>
-        <div id="pickC" class="space-y-2"></div>
+        <div id="pickC" class="space-y-1.5"></div>
       </div>
     </div>
 
-    <!-- แถวตัวกรอง: ช่วงชั่วโมง + เลือกประตู + ชนิดกราฟ (แถวเดียว) -->
-    <div class="flex flex-wrap items-end gap-x-5 sm:gap-x-6 gap-y-4 mt-5 pt-4" style="border-top:1px solid var(--border)">
-      <div style="width:7rem">
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-soft)">ตั้งแต่ชั่วโมง</label>
-        <select id="selFrom" class="field w-full text-sm font-medium rounded-xl px-3 py-2.5"></select>
+    <!-- ปุ่มพับตัวกรองรอง — แสดงเฉพาะจอเล็ก
+         เหตุผล: บนมือถือแผงตัวกรองสูงถึง 587px ผู้ใช้ต้องเลื่อนผ่านทั้งหมดกว่าจะเห็นตัวเลข
+         ตัวกรองกลุ่มนี้ (ชั่วโมง/ประตู/ประเภท/ชนิดกราฟ) ตั้งครั้งเดียวแล้วแทบไม่เปลี่ยน
+         จึงพับเก็บไว้เป็นค่าเริ่มต้น พร้อมสรุปค่าที่ตั้งไว้ให้เห็นบนปุ่ม -->
+    <button type="button" id="ctlMore" class="ctl-more" aria-expanded="false" aria-controls="ctlRow2">
+      <span class="ctl-more-l">⚙ ตัวกรอง</span>
+      <span class="ctl-more-v" id="ctlMoreSum">—</span>
+      <span class="ctl-more-c" aria-hidden="true">▾</span>
+    </button>
+
+    <!-- แถวตัวกรอง: ช่วงชั่วโมง + เลือกประตู + ประเภทลูกค้า + ชนิดกราฟ -->
+    <div class="ctl-row ctl-row2" id="ctlRow2">
+      <div class="ctl-hr">
+        <label class="ctl-lb">ช่วงเวลา</label>
+        <div class="ctl-hrpair">
+          <select id="selFrom" class="field ctl-fd" aria-label="ตั้งแต่ชั่วโมง"></select>
+          <span class="ctl-dash" aria-hidden="true">–</span>
+          <select id="selTo" class="field ctl-fd" aria-label="ถึงชั่วโมง"></select>
+        </div>
       </div>
-      <div style="width:7rem">
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-soft)">ถึงชั่วโมง</label>
-        <select id="selTo" class="field w-full text-sm font-medium rounded-xl px-3 py-2.5"></select>
-      </div>
-      <div style="width:min(30rem,100%)">
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-soft)">เลือกประตู (เลือกได้หลายประตู)</label>
+      <div class="ctl-gate">
+        <label class="ctl-lb">เลือกประตู (เลือกได้หลายประตู)</label>
         <div id="gateWrap" class="relative">
-          <button id="gateBtn" type="button" class="field w-full flex items-center justify-between gap-2 text-sm font-medium rounded-xl px-3 py-2.5">
+          <button id="gateBtn" type="button" class="field ctl-fd w-full flex items-center justify-between gap-2">
             <span id="gateBtnLabel">เลือกประตู</span>
             <span id="gateChevron" style="transition:transform .2s;color:var(--text-faint)">▾</span>
           </button>
@@ -783,19 +804,19 @@
           </div>
         </div>
       </div>
-      <div style="width:15.5rem">
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-soft)">ประเภทลูกค้า (การเดินทาง)</label>
-        <select id="selCustType" class="field w-full text-sm font-medium rounded-xl px-3 py-2.5">
+      <div class="ctl-cust">
+        <label class="ctl-lb">ประเภทลูกค้า</label>
+        <select id="selCustType" class="field ctl-fd w-full">
           <option value="all">— ไม่ระบุ (ยอดรวมทั้งหมด) —</option>
           <option value="public">ลูกค้ามาโดยรถยนต์สาธารณะ</option>
           <option value="private">ลูกค้ามาโดยรถยนต์ส่วนตัว</option>
         </select>
       </div>
-      <div>
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-soft)">เลือกชนิดกราฟ</label>
-        <div class="inline-flex rounded-xl p-1 text-sm" style="background:var(--surface-3)">
-          <button data-type="line" class="chartType px-4 py-2 rounded-lg font-semibold transition">เส้น (Line)</button>
-          <button data-type="bar"  class="chartType px-4 py-2 rounded-lg font-semibold transition">แท่ง (Bar)</button>
+      <div class="ctl-chart">
+        <label class="ctl-lb">ชนิดกราฟ</label>
+        <div class="ctl-toggle">
+          <button data-type="line" class="chartType" title="กราฟเส้น">เส้น</button>
+          <button data-type="bar"  class="chartType" title="กราฟแท่ง">แท่ง</button>
         </div>
       </div>
     </div>
@@ -2559,10 +2580,43 @@ window.addEventListener('load',()=>{ if(typeof Chart!=='undefined'){ try{ render
      WARN_MS  : เตือนล่วงหน้ากี่มิลลิวินาทีก่อนถึงเวลา
      ══════════════════════════════════════════════════════════════════ */
   const IDLE_MS = 5 * 60 * 1000;   // 5 นาที
-  const WARN_MS = 30 * 1000;       // เตือนล่วงหน้า 30 วินาที
+  /* ★ เวลาแสดงโลโก้ก่อนเข้าแดชบอร์ดเอง — ปรับได้ 2000–4000 มิลลิวินาที (ค่าอื่นจะถูกบีบเข้าช่วงนี้)
+     ทำไมจำกัดช่วง: น้อยกว่า 2 วินาทีอนิเมชันยังไม่ทันเล่น มากกว่า 4 วินาทีผู้ใช้เริ่มรู้สึกว่าช้า */
+  const SPLASH_MS = 3000;
+  const splashMs  = Math.min(4000, Math.max(2000, SPLASH_MS));
+  sp.style.setProperty('--sp-ms', splashMs + 'ms');  const WARN_MS = 30 * 1000;       // เตือนล่วงหน้า 30 วินาที
 
   let locked = true, lastAct = Date.now(), tick = null, warnEl = null;
+  let autoT = null, statT1 = null, statT2 = null;
 
+  /* ── ละอองแสงบนหน้าโลโก้ — สุ่มตำแหน่ง/ความเร็วครั้งเดียวตอนโหลด (ลดจำนวนบนจอเล็กเพื่อประหยัดแบตฯ) ── */
+  try{
+    const box = document.getElementById('spParticles');
+    const n = window.innerWidth < 640 ? 10 : 18;
+    for(let i = 0; i < n; i++){
+      const p = document.createElement('i');
+      p.style.setProperty('--x',  (Math.random()*100).toFixed(1) + '%');
+      p.style.setProperty('--s',  (3 + Math.random()*5).toFixed(1) + 'px');
+      p.style.setProperty('--d',  (6 + Math.random()*7).toFixed(1) + 's');
+      p.style.setProperty('--dl', (-Math.random()*10).toFixed(1) + 's');
+      p.style.setProperty('--dx', ((Math.random()-.5)*80).toFixed(0) + 'px');
+      box.appendChild(p);
+    }
+  }catch(e){ console.error(e); }
+
+  /* ── เข้าแดชบอร์ดอัตโนมัติหลังโชว์โลโก้ครบเวลา ──
+     ทำไมเริ่มนับใหม่ทุกครั้งที่ lock(): เมื่อไม่มีการใช้งานครบ 5 นาที ระบบกลับมาหน้านี้
+     ซึ่งต้องเล่นอนิเมชันแล้วเข้าเองอีกครั้ง ไม่ใช่ค้างรอให้กดปุ่มเหมือนเวอร์ชันก่อน */
+  function armAutoEnter(){
+    clearTimeout(autoT); clearTimeout(statT1); clearTimeout(statT2);
+    const st = document.getElementById('spStatus');
+    if(st){
+      st.textContent = 'กำลังเตรียมแดชบอร์ด…';
+      statT1 = setTimeout(function(){ st.textContent = 'กำลังโหลดข้อมูลประตู…'; }, splashMs * 0.45);
+      statT2 = setTimeout(function(){ st.textContent = 'พร้อมใช้งาน'; }, splashMs * 0.85);
+    }
+    autoT = setTimeout(unlock, splashMs);
+  }
   /* ทำไมใช้ "จับเวลาเทียบเวลาจริง" แทน setTimeout ก้อนเดียว:
      เบราว์เซอร์บนมือถือจะหน่วง/หยุด timer เมื่อสลับแอปหรือปิดหน้าจอ
      ถ้าพึ่ง setTimeout อย่างเดียว ผู้ใช้ที่วางเครื่องทิ้งไว้ครึ่งชั่วโมง
@@ -2619,12 +2673,16 @@ window.addEventListener('load',()=>{ if(typeof Chart!=='undefined'){ try{ render
     locked = true;
     hideWarn();
     goHome();
+    document.body.classList.remove('sp-enter');
     sp.classList.remove('gone');
+    armAutoEnter();
   }
   function unlock(){
     if(!locked) return;
     locked = false;
+    clearTimeout(autoT); clearTimeout(statT1); clearTimeout(statT2);
     sp.classList.add('gone');
+    document.body.classList.add('sp-enter');
     markActive();
   }
 
@@ -2644,7 +2702,7 @@ window.addEventListener('load',()=>{ if(typeof Chart!=='undefined'){ try{ render
     if(Date.now() - lastAct >= IDLE_MS) lock();
   });
 
-  // แตะหน้าโลโก้เพื่อเข้าใช้งาน (รองรับทั้งเมาส์ นิ้ว และคีย์บอร์ด)
+  // แตะหน้าโลโก้เพื่อ "ข้าม" การรอ (ไม่บังคับ — ถ้าไม่แตะก็เข้าเองตามเวลา SPLASH_MS)
   sp.addEventListener('click', unlock);
   sp.addEventListener('touchend', function(e){ e.preventDefault(); unlock(); }, {passive:false});
   sp.addEventListener('keydown', function(e){
@@ -2667,8 +2725,10 @@ window.addEventListener('load',()=>{ if(typeof Chart!=='undefined'){ try{ render
     }, {passive:true});
   });
 
+  armAutoEnter();   // เริ่มนับถอยหลังทันทีที่เปิดโปรแกรม
+
   // เผยแพร่ให้ส่วนอื่นเรียกได้ (เช่น ปุ่ม "ออกจากระบบ" ในอนาคต)
-  window.SBKKiosk = { lock: lock, unlock: unlock, ping: markActive, idleMs: IDLE_MS };
+  window.SBKKiosk = { lock: lock, unlock: unlock, ping: markActive, idleMs: IDLE_MS, splashMs: splashMs };
 })();
 </script>
 
@@ -3025,7 +3085,7 @@ button, select, label, a, .navbtn, .seg button{ touch-action:manipulation; }
      DEFAULT_AUTO  : true = ซิงก์เองทุกครั้งที่เปิดโปรแกรม
      ══════════════════════════════════════════════════════════════════ */
   var DEFAULT_URL   = 'https://script.google.com/macros/s/AKfycby6IuRvpC-VVfuItFj8xLRA0-NBa2yFLort96K6PL_yQPQ3DKSSL4srhbUpDy9RZSK4/exec';
-  var DEFAULT_TOKEN = 'SBK-2569-CHANGE-ME';
+  var DEFAULT_TOKEN = 'SBK-2521-CHANGE-1245';
   var DEFAULT_AUTO  = true;
 
   var cfg = { url:DEFAULT_URL, token:DEFAULT_TOKEN, auto:DEFAULT_AUTO,
@@ -3174,7 +3234,7 @@ button, select, label, a, .navbtn, .seg button{ touch-action:manipulation; }
           }
           log('   กดปุ่ม 🔍 ตรวจสอบโฟลเดอร์ เพื่อดูว่ามีอะไรอยู่ข้างในบ้าง');
           toast('ไม่พบไฟล์สเปรดชีตในโฟลเดอร์ — กด 🔍 ตรวจสอบโฟลเดอร์','err');
-          openModal();
+          if(!quiet) openModal();
           return;
         }
 
@@ -3214,10 +3274,15 @@ button, select, label, a, .navbtn, .seg button{ touch-action:manipulation; }
         console.error(err);
         resetBtn(); busy = false;
         log('✕ ' + err.message, 'lg-er');
-        toast(err.message, 'err');
-        /* ตั้งค่าไม่ตรง → เปิดหน้าตั้งค่าให้แก้ทันที แทนที่จะปล่อยให้ผู้ใช้งมหาเอง
-           (ครอบคลุมตอนซิงก์อัตโนมัติด้วย จึงไม่เช็ค quiet) */
-        if(/รหัสลับ|Web App|หมดเวลา/.test(err.message)) openModal();
+        /* v51: ซิงก์อัตโนมัติที่ล้มเหลว "ห้าม" เปิดหน้าตั้งค่าบังทั้งจอ
+           เดิมทำให้ผู้ใช้ที่ออฟไลน์หรือยังไม่ตั้ง TOKEN เจอกล่องบังทุกครั้งที่เปิดโปรแกรม
+           จนใช้ปุ่มนำเข้าไฟล์เองไม่ได้ — ตอนนี้แจ้งเป็นข้อความพร้อมปุ่มลัดไปตั้งค่าแทน */
+        if(quiet){
+          toast('ซิงก์ Drive อัตโนมัติไม่สำเร็จ — กดค้างที่ปุ่ม ☁️ ซิงก์ Drive เพื่อตั้งค่า','err');
+        }else{
+          toast(err.message, 'err');
+          if(/รหัสลับ|Web App|หมดเวลา/.test(err.message)) openModal();
+        }
       });
   }
 
@@ -3540,6 +3605,94 @@ html.dark .logo-inner{ background:linear-gradient(160deg,#1a1712 0%,#141210 55%,
   #splash .sp-wordmark{ width:126px; }
 }
 
+/* ═══════ 4.1) v52 · หน้าโลโก้แบบเข้าอัตโนมัติ — สีทอง × อินดิโก × มรกต (โทนเดียวกับกราฟในแดชบอร์ด) ═══════ */
+#splash{ --sp-ms:3000ms; overflow:hidden;
+  background:radial-gradient(120% 90% at 50% -10%, #231a0d 0%, #0c0b10 52%, #040407 100%);
+  /* ขาออก: จางหาย + ขยายเล็กน้อยให้รู้สึกว่า "ทะลุเข้า" แดชบอร์ด
+     (ไม่ใช้ blur เพราะหนักบนมือถือรุ่นเก่า) · visibility หน่วงไว้จนจางเสร็จ */
+  transition:opacity .8s ease, transform .8s cubic-bezier(.4,0,.2,1), visibility 0s linear 0s; }
+#splash.gone{ opacity:0; transform:scale(1.07); visibility:hidden; pointer-events:none;
+  transition:opacity .8s ease, transform .8s cubic-bezier(.4,0,.2,1), visibility 0s linear .8s; }
+
+/* แสงออโรร่า 3 ก้อน — ใช้ radial-gradient + transform เท่านั้น (เบา ไม่ต้อง blur) */
+#splash .sp-aurora i{ position:absolute; border-radius:50%; pointer-events:none; will-change:transform; }
+#splash .sp-aurora .a1{ width:70vmax; height:70vmax; left:-22vmax; top:-26vmax;
+  background:radial-gradient(circle, rgba(207,159,43,.30), transparent 62%); }
+#splash .sp-aurora .a2{ width:64vmax; height:64vmax; right:-24vmax; bottom:-24vmax;
+  background:radial-gradient(circle, rgba(79,70,229,.32), transparent 62%); }
+#splash .sp-aurora .a3{ width:48vmax; height:48vmax; left:38%; bottom:-20vmax;
+  background:radial-gradient(circle, rgba(16,185,129,.20), transparent 64%); }
+#splash:not(.gone) .sp-aurora .a1{ animation:spDriftA 9s ease-in-out infinite; }
+#splash:not(.gone) .sp-aurora .a2{ animation:spDriftB 11s ease-in-out infinite; }
+#splash:not(.gone) .sp-aurora .a3{ animation:spDriftA 13s ease-in-out -4s infinite reverse; }
+@keyframes spDriftA{ 0%,100%{ transform:translate3d(0,0,0) scale(1);} 50%{ transform:translate3d(6vmax,5vmax,0) scale(1.12);} }
+@keyframes spDriftB{ 0%,100%{ transform:translate3d(0,0,0) scale(1.05);} 50%{ transform:translate3d(-7vmax,-4vmax,0) scale(.94);} }
+
+/* ละอองแสงลอยขึ้น (สร้างจาก JS) */
+#splash .sp-particles{ position:absolute; inset:0; pointer-events:none; }
+#splash .sp-particles i{ position:absolute; bottom:-12px; left:var(--x); width:var(--s); height:var(--s); border-radius:50%;
+  background:radial-gradient(circle, #fff3c4 0%, #f6d27a 45%, transparent 70%); opacity:0; }
+#splash:not(.gone) .sp-particles i{ animation:spRiseUp var(--d) linear var(--dl) infinite; }
+@keyframes spRiseUp{ 0%{ transform:translate3d(0,0,0); opacity:0;} 12%{ opacity:.85;} 100%{ transform:translate3d(var(--dx),-108vh,0); opacity:0;} }
+
+/* ไอคอน + วงโคจร */
+#splash .sp-emblem{ position:relative; display:grid; place-items:center; padding:clamp(16px,3.2vmin,26px); }
+#splash:not(.gone) .sp-emblem{ animation:spPop .9s cubic-bezier(.2,1.1,.3,1) both, spFloat 3.6s ease-in-out .9s infinite; }
+@keyframes spPop{ 0%{ opacity:0; transform:scale(.55) rotate(-8deg);} 100%{ opacity:1; transform:none;} }
+#splash .sp-icon{ position:relative; z-index:1; animation:none !important;
+  box-shadow:0 22px 60px -14px rgba(207,159,43,.65), 0 0 0 1.5px rgba(246,210,122,.5), inset 0 0 0 1px rgba(255,255,255,.08); }
+#splash .sp-ring{ position:absolute; inset:0; border-radius:50%; padding:2px; pointer-events:none;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+#splash .sp-ring.r1{ background:conic-gradient(from 0deg, transparent 0 55%, #cf9f2b 80%, #fff3c4 100%); }
+#splash .sp-ring.r2{ inset:-9px; padding:1.5px; background:conic-gradient(from 180deg, transparent 0 60%, #6366f1 85%, #34d399 100%); opacity:.85; }
+#splash:not(.gone) .sp-ring.r1{ animation:spSpin 2.8s linear infinite; }
+#splash:not(.gone) .sp-ring.r2{ animation:spSpin 4.6s linear infinite reverse; }
+@keyframes spSpin{ to{ transform:rotate(360deg);} }
+
+/* ชื่อระบบ — ตัวอักษรไล่สีทอง + แสงวิ่งผ่าน */
+#splash .sp-title{
+  background:linear-gradient(100deg,#e9b94a 0%,#fff1bd 30%,#f6d27a 50%,#cf9f2b 70%,#fff1bd 100%);
+  background-size:220% 100%; -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:transparent; filter:drop-shadow(0 2px 14px rgba(207,159,43,.35)); }
+#splash:not(.gone) .sp-title{ animation:spRise .8s cubic-bezier(.2,.9,.25,1) .15s both, spShine 3.2s linear 1s infinite; }
+@keyframes spShine{ from{ background-position:120% 0;} to{ background-position:-100% 0;} }
+#splash:not(.gone) .sp-sub{ animation:spRise .8s cubic-bezier(.2,.9,.25,1) .3s both; }
+#splash .sp-sub{ color:rgba(244,236,216,.72); }
+
+/* แถบความคืบหน้า — วิ่งเต็มภายใน SPLASH_MS แล้วเข้าแดชบอร์ดเอง */
+#splash .sp-load{ margin-top:30px; width:min(270px,72vw); display:flex; flex-direction:column; align-items:center; gap:10px; }
+#splash:not(.gone) .sp-load{ animation:spRise .8s cubic-bezier(.2,.9,.25,1) .45s both; }
+#splash .sp-bar{ position:relative; width:100%; height:5px; border-radius:99px; overflow:hidden;
+  background:rgba(255,255,255,.1); box-shadow:inset 0 0 0 1px rgba(255,255,255,.05); }
+#splash .sp-bar i{ position:absolute; inset:0; width:100%; border-radius:99px; transform-origin:left center; transform:scaleX(0);
+  background:linear-gradient(90deg,#cf9f2b,#f6d27a 55%,#fff3c4); box-shadow:0 0 14px rgba(246,210,122,.8); }
+#splash:not(.gone) .sp-bar i{ animation:spFill var(--sp-ms) cubic-bezier(.35,.1,.3,1) forwards; }
+@keyframes spFill{ to{ transform:scaleX(1);} }
+#splash .sp-status{ font-size:.78rem; letter-spacing:.04em; color:rgba(246,210,122,.85); min-height:1.2em; }
+#splash:not(.gone) .sp-hint{ animation:spRise .8s cubic-bezier(.2,.9,.25,1) .6s both; }
+#splash .sp-hint{ margin-top:18px; }
+#splash:not(.gone) .sp-org{ animation:spRise .8s cubic-bezier(.2,.9,.25,1) .75s both; }
+
+/* จอเตี้ยแนวนอน: บีบระยะให้ทุกอย่างพอดีหน้าจอ */
+@media (max-height:520px) and (orientation:landscape){
+  #splash .sp-load{ margin-top:12px; gap:6px; }
+  #splash .sp-hint{ display:none; }
+}
+@media (max-width:479.98px){ #splash .sp-load{ margin-top:24px; } }
+
+/* ปรากฏเนื้อหาแดชบอร์ดนุ่ม ๆ หลังโลโก้จางลง (เฉพาะ opacity — ไม่ใช้ transform เพราะจะทำให้เมนู position:fixed เพี้ยน) */
+@keyframes spReveal{ from{ opacity:0;} to{ opacity:1;} }
+body.sp-enter > *:not(#splash):not(script):not(style):not(#idleWarn){ animation:spReveal .9s ease .1s both; }
+
+/* ผู้ใช้ที่ตั้งค่าลดการเคลื่อนไหว: ปิดอนิเมชันวนซ้ำ แต่ยังเข้าอัตโนมัติตามเวลาเดิม */
+@media (prefers-reduced-motion:reduce){
+  #splash .sp-aurora i, #splash .sp-particles i, #splash .sp-ring, #splash .sp-emblem, #splash .sp-title{ animation:none !important; }
+  #splash .sp-particles{ display:none; }
+  body.sp-enter > *{ animation:none !important; }
+}
+@media print{ #splash{ display:none !important; } }
+
 /* ═══════ 5) แถบเตือนก่อนกลับหน้าแรก ═══════ */
 #idleWarn{
   position:fixed; z-index:150; left:50%; transform:translateX(-50%) translateY(140%);
@@ -3742,6 +3895,105 @@ header.hero{ max-height:none; }
   content:""; position:absolute; left:0; top:22%; bottom:22%;
   width:3px; border-radius:0 3px 3px 0; background:var(--brand);
 }
+
+/* ═══════ 10) แผงควบคุมหน้า "แยกยอดลูกค้ารายประตู" (v51) ═══════
+   ปัญหาเดิม: แผงสูง 217px ใหญ่กว่าการ์ดสรุปยอด (100px) ทั้งที่เป็นแค่ตัวกรอง
+   ดึงสายตาไปจากตัวเลขซึ่งเป็นเนื้อหาหลักของหน้า
+   วิธีแก้: ลดระยะขอบ · ย่อความสูงช่องกรอก · รวมช่วงชั่วโมงสองช่องเป็นกลุ่มเดียว
+           · ตัดหัวข้อที่ซ้ำกับเมนูซ้ายออก */
+
+.ctl-panel{ padding:.75rem .9rem .8rem; }
+@media (min-width:640px){ .ctl-panel{ padding:.85rem 1.2rem .9rem; } }
+
+.ctl-row{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:.6rem 1.1rem; }
+.ctl-row2{
+  margin-top:.6rem; padding-top:.6rem;
+  border-top:1px solid var(--border);
+}
+
+/* ป้ายกำกับ — เล็กและชิดช่องกรอกมากขึ้น */
+.ctl-lb{
+  display:block; margin-bottom:.22rem; line-height:1.35;
+  font-size:.68rem; font-weight:700; letter-spacing:.01em;
+  color:var(--text-soft); white-space:nowrap;
+}
+.ctl-lb-dot{ display:flex; align-items:center; gap:.4rem; }
+.ctl-lb-dot span{ width:7px; height:7px; border-radius:999px; display:inline-block; flex:0 0 auto; }
+
+/* ช่องกรอกมาตรฐานของแผงนี้ — เตี้ยกว่าเดิม 6px แต่ยังสูงพอสำหรับนิ้ว (38px) */
+.ctl-fd{
+  font-size:.82rem; font-weight:500;
+  border-radius:.65rem; padding:.35rem .6rem; height:36px;
+}
+select.ctl-fd{ padding-right:1.6rem; }
+
+/* ช่วงชั่วโมง: จับคู่ "ตั้งแต่ – ถึง" ไว้ด้วยกัน อ่านเป็นช่วงเดียว ประหยัดป้ายกำกับไป 1 อัน */
+.ctl-hr{ flex:0 0 auto; }
+.ctl-hrpair{ display:flex; align-items:center; gap:.35rem; }
+.ctl-hrpair .ctl-fd{ width:6.2rem; }
+.ctl-dash{ color:var(--text-faint); font-weight:700; }
+
+.ctl-seg{ flex:0 0 auto; }
+.ctl-seg .seg{ flex-wrap:wrap; }
+.ctl-seg .seg button{ font-size:.76rem; padding:.34rem .72rem; }
+
+.ctl-pick{ flex:1 1 12rem; min-width:11rem; }
+.ctl-pick select, .ctl-pick .field{
+  font-size:.82rem !important; height:36px !important;
+  padding:.35rem .6rem !important; border-radius:.65rem !important;
+}
+.ctl-gate{ flex:1 1 20rem; min-width:14rem; max-width:32rem; }
+.ctl-cust{ flex:0 1 13.5rem; min-width:11rem; }
+.ctl-chart{ flex:0 0 auto; }
+
+/* สลับชนิดกราฟ — ย่อจากปุ่มยาว "เส้น (Line)" เหลือ "เส้น" พร้อม tooltip */
+.ctl-toggle{
+  display:inline-flex; padding:.18rem; border-radius:.65rem; background:var(--surface-3); height:36px;
+}
+.ctl-toggle button{
+  font-size:.8rem; font-weight:700; padding:0 .95rem; border-radius:.5rem; transition:.2s;
+}
+
+/* แท็บเล็ตลงมา: ให้ตัวเลือกช่วงเวลาเต็มแถว อ่านง่ายกว่าบีบเป็นคอลัมน์แคบ */
+@media (max-width:1023.98px){
+  .ctl-pick{ flex:1 1 100%; }
+}
+@media (max-width:639.98px){
+  .ctl-row{ gap:.65rem .8rem; }
+  .ctl-seg, .ctl-gate, .ctl-cust, .ctl-hr, .ctl-chart{ flex:1 1 100%; min-width:0; max-width:none; }
+  .ctl-hrpair .ctl-fd{ flex:1; width:auto; }
+  .ctl-toggle{ width:100%; }
+  .ctl-toggle button{ flex:1; }
+}
+
+/* ปุ่มพับตัวกรองรอง — เห็นเฉพาะจอเล็ก */
+.ctl-more{ display:none; }
+@media (max-width:1023.98px){
+  .ctl-more{
+    display:flex; align-items:center; gap:.55rem; width:100%;
+    margin-top:.6rem; padding:.55rem .75rem; min-height:44px;
+    border-radius:.7rem; border:1px solid var(--border-2); background:var(--surface-2);
+    font-size:.8rem; text-align:left;
+  }
+  .ctl-more-l{ font-weight:700; color:var(--text-soft); flex:0 0 auto; }
+  .ctl-more-v{
+    flex:1; min-width:0; color:var(--text-faint); font-size:.74rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .ctl-more-c{ flex:0 0 auto; color:var(--text-faint); transition:transform .2s; }
+  .ctl-more[aria-expanded="true"] .ctl-more-c{ transform:rotate(180deg); }
+
+  .ctl-row2{ margin-top:.6rem; padding-top:.6rem; }
+  .ctl-row2[hidden]{ display:none; }
+}
+
+/* อุปกรณ์สัมผัส: เป้าแตะต้องไม่ต่ำกว่ามาตรฐาน แม้จะย่อขนาดลง */
+@media (hover:none){
+  .ctl-fd, .ctl-toggle, .ctl-toggle button, .ctl-pick select, .ctl-pick .field{
+    height:44px !important; min-height:44px;
+  }
+  .ctl-seg .seg button{ min-height:40px; }
+}
 </style>
 
 <script>
@@ -3807,5 +4059,51 @@ header.hero{ max-height:none; }
 })();
 </script>
 
+<script>
+
+/* พับ/กางตัวกรองรองบนจอเล็ก + สรุปค่าที่ตั้งไว้ให้เห็นบนปุ่มโดยไม่ต้องกาง */
+(function(){
+  const btn = document.getElementById('ctlMore');
+  const row = document.getElementById('ctlRow2');
+  if(!btn || !row) return;
+
+  const isSmall = () => window.matchMedia('(max-width:1023.98px)').matches;
+
+  function summary(){
+    const hf = document.getElementById('selFrom');
+    const ht = document.getElementById('selTo');
+    const gl = document.getElementById('gateBtnLabel');
+    const parts = [];
+    if(hf && ht && hf.selectedIndex >= 0 && ht.selectedIndex >= 0)
+      parts.push(hf.options[hf.selectedIndex].text + '–' + ht.options[ht.selectedIndex].text);
+    if(gl && gl.textContent.trim()) parts.push(gl.textContent.trim());
+    document.getElementById('ctlMoreSum').textContent = parts.join(' · ') || '—';
+  }
+
+  function apply(){
+    if(!isSmall()){ row.hidden = false; return; }   // จอใหญ่ต้องเห็นเสมอ
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    row.hidden = !open;
+    summary();
+  }
+
+  btn.addEventListener('click', function(){
+    btn.setAttribute('aria-expanded', btn.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+    apply();
+  });
+  window.addEventListener('resize', apply, {passive:true});
+
+  // ค่าที่สรุปเปลี่ยนเมื่อผู้ใช้แก้ตัวกรอง — อัปเดตข้อความบนปุ่มตาม
+  ['selFrom','selTo'].forEach(function(id){
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('change', summary);
+  });
+  new MutationObserver(summary).observe(
+    document.getElementById('gateBtnLabel'), {childList:true, characterData:true, subtree:true});
+
+  apply();
+})();
+
+</script>
 </body>
 </html>
